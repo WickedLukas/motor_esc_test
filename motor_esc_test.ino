@@ -1,6 +1,5 @@
 #include <Arduino.h>
-#include <Servo.h>
-#include "DShot.h"
+//#include <pwmServo.h>
 #include "iBus.h"
 
 // print debug outputs through serial
@@ -23,23 +22,19 @@
 #define PITCH		1
 #define YAW			3
 #define THROTTLE	2
-#define STOP		10
+#define STOP		9
+
+// motor pwm resolution
+#define MOTOR_PWM_RES 11
+
+// pwm frequency
+#define MOTOR_PWM_FREQENCY 12000
+
+// pwm pin to control motor
+#define MOTOR_PIN 20
 
 // object for radio control (rc)
 IBUS rc;
-
-// esc inputs
-// TODO: ESC calibration with analog protocol after flashing but before using dshot is recommended
-// 1: top-left (CW); 2: top-right (CCW); 3: bottom-left (CW); 4: bottom-right (CCW);
-Servo esc_motor_1;
-Servo esc_motor_2;
-Servo esc_motor_3;
-Servo esc_motor_4;
-
-/*DShot esc_motor_1(1);
-DShot esc_motor_2(2);
-DShot esc_motor_3(3);
-DShot esc_motor_4(4);*/
 
 // pointer on an array of 10 received rc channel values [1000; 2000]
 uint16_t *rc_channelValue;
@@ -50,14 +45,20 @@ void setup() {
 		Serial.begin(115200);
 		while (!Serial);
 	#endif
-	
+
 	// initialize serial for iBus communication
 	Serial3.begin(115200, SERIAL_8N1);
 	while (!Serial3);
 	
 	// initialize rc and return a pointer on the received rc channel values
 	rc_channelValue = rc.begin(Serial3);
+	
+	analogWriteFrequency(MOTOR_PIN, MOTOR_PWM_FREQENCY);
+	digitalWrite(MOTOR_PIN, LOW);
+	pinMode(MOTOR_PIN, OUTPUT);
+	analogWriteResolution(8);
 }
+
 
 void loop() {
 	delayMicroseconds(100);
@@ -65,31 +66,12 @@ void loop() {
 	// update rc
 	rc.update();
 	
-	if (rc_channelValue[STOP] == 1000) {
-		esc_motor_1.writeMicroseconds(rc_channelValue[THROTTLE]);
-		esc_motor_2.writeMicroseconds(rc_channelValue[THROTTLE]);
-		esc_motor_3.writeMicroseconds(rc_channelValue[THROTTLE]);
-		esc_motor_4.writeMicroseconds(rc_channelValue[THROTTLE]);
-		/*
-		esc_motor_1.setThrottle(rc_channelValue[THROTTLE]);
-		esc_motor_2.setThrottle(rc_channelValue[THROTTLE]);
-		esc_motor_3.setThrottle(rc_channelValue[THROTTLE]);
-		esc_motor_4.setThrottle(rc_channelValue[THROTTLE]);
-		*/
-		
-	}
-	else {
-		esc_motor_1.writeMicroseconds(1000);
-		esc_motor_2.writeMicroseconds(1000);
-		esc_motor_3.writeMicroseconds(1000);
-		esc_motor_4.writeMicroseconds(1000);
-		/*
-		esc_motor_1.setThrottle(1000);
-		esc_motor_2.setThrottle(1000);
-		esc_motor_3.setThrottle(1000);
-		esc_motor_4.setThrottle(1000);
-		*/
-	}
+	uint32_t oldRes;
+	noInterrupts();
+	oldRes = analogWriteResolution(MOTOR_PWM_RES);
+	analogWrite(MOTOR_PIN, rc_channelValue[THROTTLE]);
+	analogWriteResolution(oldRes);
+	interrupts();
 	
 	// run serial print at a rate independent of the main loop (t0_serial = 16666 for 60 Hz update rate)
 	static uint32_t t0_serial = micros();
